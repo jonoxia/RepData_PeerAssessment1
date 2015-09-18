@@ -1,0 +1,172 @@
+---
+title: "Reproducible Research: Peer Assignment 1"
+author: "Jonathan Xia"
+date: "September 18, 2015"
+output: html_document
+---
+
+## Loading and preprocessing the data
+
+Let's start by reading the CSV file.
+
+```{r}
+activity <- read.csv("~/coursera/RepData_PeerAssessment1/activity.csv");
+head(activity);
+```
+
+It looks like a lot of the 'steps' values are missing data. How many?
+
+```{r}
+summary(activity$steps);
+```
+
+## What is mean total number of steps taken per day?
+
+To find mean steps per day, we'll use unique() to get a list of dates and subset() to find all the rows of the table for any given day. There are a lot of NA values so we'll strip those out before adding up each day's steps.
+
+```{r}
+dates <- unique(activity$date);
+dailies <- sapply(dates, function(d) {
+    sum(subset(activity, date==d & !is.na(activity$steps))$steps);
+});
+```
+
+The mean steps per day is:
+
+```{r}
+print(mean(dailies))
+```
+
+While the median is:
+```{r}
+print(median(dailies))
+```
+
+Let's see that histogram:
+```{r}
+hist(dailies, breaks=10, xlab="Steps per day", main="Histogram of Steps per Day")
+```
+
+## What is the average daily activity pattern?
+
+The code to get the mean steps for each interval is very similar logically to the code we used to get the total steps per day. We'll get a vector containing each interval value once, and for each of those interval values we'll take the subset of matching steps values (leaving out the NAs) and then take the mean of that subset.
+
+```{r}
+intervals <- unique(activity$interval)
+avg.steps.for.int <- sapply(intervals, function(i) {
+    mean(subset(activity, !is.na(steps) & interval == i)$steps)
+});
+```
+
+For convenience let's make a data frame: the first column is the interval number (0, 5, 10, etc), and the second column is the average number of steps taken in that interval.
+
+```{r}
+interval.map <- data.frame(intervals, avg.steps.for.int);
+head(interval.map)
+```
+
+Plotting a time series of this gives us:
+
+```{r}
+plot(interval.map$intervals, interval.map$avg.steps.for.int,
+     type="l", xlab="Interval of day", ylab="Mean number of steps")
+```
+
+The x-axis is weird because the interval numbers jump straight from 55 to 100 (they're clock numbers, not continuous real numbers, so 100 means 1:00AM). Maybe do a transformation of the interval numbers (or treat them as factors) so that the chart won't get weirdly stretched out at each hour mark.
+
+
+## Imputing missing values
+
+Let's replace each "NA" value with the average number of steps taken in a similar time interval on other days. So for example, a missing steps value for midnight will be filled in with the average number of steps taken at midnight on all the other days (should be close to zero) while a missing steps value for noon will be filled in with the average number of steps taken at noon on all the other days.
+
+In case we need to refer to the original unmodified "activity" data frame, let's make our modifications to a deep copy:
+
+```{r}
+activity.corrected <- data.frame(activity);
+```
+
+For each row in interval.map, get the interval number and the avg steps, pick out all rows of activity with a null steps value and a matching interval number, and set their steps to the avg steps:
+
+```{r}
+for (i in seq(nrow(interval.map))) {
+    ival <- interval.map[i, 1];
+    avg <- interval.map[i, 2];
+    missing <- is.na(activity$steps) & activity$interval == ival;
+    activity.corrected[missing, 1] <- avg;
+}
+
+head(activity.corrected);
+```
+
+I know using for loops is discouraged but i haven't found another way to do this. Making modifications inside an apply function doesn't work due to scope rules (changes don't stick after function exits). Another thing to add to my "R Gotchas".
+
+Let's verify that this worked by counting the number of steps values that are NA. It should be zero:
+
+```{r}
+print( length(activity.corrected[is.na(activity.corrected$steps), 1]) );
+summary(activity.corrected$steps)
+```
+
+Recalculate our daily totals using the new data set:
+```{r}
+dailies.corrected <- sapply(dates, function(d) {
+    sum(subset(activity.corrected, date==d )$steps);
+});
+```
+
+Look at the new median, mean, and histogram:
+
+```{r}
+print(mean(dailies.corrected))
+
+print(median(dailies.corrected))
+
+hist(dailies.corrected, breaks=10, xlab="Steps per day", main="Histogram of Steps per Day")
+```
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+To make it easier to answer this question, let's add a column to our data frame which labels whether it's a weekday or weekend.
+
+The dates were read as a Factor variable, but the 'weekdays' function expects date variables. We'll conver them by first turning them into character strings and then parsing those strings with strptime:
+
+```{r}
+days <- weekdays(strptime(as.character(activity$date), format="%Y-%m-%d"));
+```
+
+The 'weekdays' function returns a string like 'Saturday' etc:
+
+```{r}
+print(unique(days))
+```
+
+So we'll fill in our new column with TRUE if the day is Saturday or Sunday and FALSE otherwise:
+```{r}
+activity.corrected$is.weekend <- (days == "Saturday" | days == "Sunday")
+```
+
+Re-do the code to find average steps per interval, this time running it once on just the weekdays and once on just the weekend days. Put the results into new columns of the interval.map frame:
+
+```{r}
+interval.map$weekend <- sapply(intervals, function(i) {
+    matches <- subset(activity.corrected, is.weekend==TRUE & interval == i);
+    mean(matches$steps);
+});
+
+interval.map$weekday <- sapply(intervals, function(i) {
+    matches <- subset(activity.corrected, is.weekend==FALSE & interval == i);
+    mean(matches$steps);
+});
+```
+
+Here are the weekday and weekend plots side-by-side:
+
+```{r}
+par(mfrow=c(1,2))
+plot(interval.map$intervals, interval.map$weekday, type="l",
+     xlab="Interval of weekday", ylab="Mean number of steps");
+plot(interval.map$intervals, interval.map$weekend, type="l",
+     xlab="Interval of weekend", ylab="Mean number of steps");
+```
+
+TODO: enforce a common y-axis for easier comparison; put in some vertical lines at 6am, noon, and 6pm to make the graph more readable.
