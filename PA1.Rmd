@@ -7,16 +7,11 @@ output: html_document
 
 ## Loading and preprocessing the data
 
-Let's start by reading the CSV file.
+Let's start by reading the CSV file and getting a high-level overview of the data:
 
 ```{r}
 activity <- read.csv("~/coursera/RepData_PeerAssessment1/activity.csv");
 head(activity);
-```
-
-It looks like a lot of the 'steps' values are missing data. How many?
-
-```{r}
 summary(activity$steps);
 ```
 
@@ -53,7 +48,7 @@ The code to get the mean steps for each interval is very similar logically to th
 
 ```{r}
 intervals <- unique(activity$interval)
-avg.steps.for.int <- sapply(intervals, function(i) {
+avg.steps <- sapply(intervals, function(i) {
     mean(subset(activity, !is.na(steps) & interval == i)$steps)
 });
 ```
@@ -61,21 +56,35 @@ avg.steps.for.int <- sapply(intervals, function(i) {
 For convenience let's make a data frame: the first column is the interval number (0, 5, 10, etc), and the second column is the average number of steps taken in that interval.
 
 ```{r}
-interval.map <- data.frame(intervals, avg.steps.for.int);
+interval.map <- data.frame(intervals, avg.steps);
 head(interval.map)
 ```
 
 Plotting a time series of this gives us:
 
 ```{r}
-plot(interval.map$intervals, interval.map$avg.steps.for.int,
+plot(interval.map$intervals, interval.map$avg.steps,
      type="l", xlab="Interval of day", ylab="Mean number of steps")
 ```
 
-The x-axis is weird because the interval numbers jump straight from 55 to 100 (they're clock numbers, not continuous real numbers, so 100 means 1:00AM). Maybe do a transformation of the interval numbers (or treat them as factors) so that the chart won't get weirdly stretched out at each hour mark.
+The "flat" parts of this plot are a side effect fo the fact that the interval numbers are clock numbers -- for instance they jump straight from 855 to 900 (8:55 to 9:00). But "plot" assumes that intervals are normal integers with some ranges missing data.
 
+There's a large spike sometime between 500 and 1000 -- let's find the peak using max():
+
+```{r}
+max.steps <- max(interval.map$avg.steps)
+print( interval.map[interval.map$avg.steps == max.steps,c(1,2)])
+```
+
+The 835 interval (8:35 AM) contains the most steps on average.
 
 ## Imputing missing values
+
+The number of missing steps values in the dataset is:
+
+```{r}
+print( length(activity[is.na(activity$steps), 1]) );
+```
 
 Let's replace each "NA" value with the average number of steps taken in a similar time interval on other days. So for example, a missing steps value for midnight will be filled in with the average number of steps taken at midnight on all the other days (should be close to zero) while a missing steps value for noon will be filled in with the average number of steps taken at noon on all the other days.
 
@@ -104,7 +113,6 @@ Let's verify that this worked by counting the number of steps values that are NA
 
 ```{r}
 print( length(activity.corrected[is.na(activity.corrected$steps), 1]) );
-summary(activity.corrected$steps)
 ```
 
 Recalculate our daily totals using the new data set:
@@ -118,11 +126,11 @@ Look at the new median, mean, and histogram:
 
 ```{r}
 print(mean(dailies.corrected))
-
 print(median(dailies.corrected))
-
 hist(dailies.corrected, breaks=10, xlab="Steps per day", main="Histogram of Steps per Day")
 ```
+
+After replacing the NA values with imputed values, the mean and median are now identical, which tells us the data now forms a symmetrical bell-curve distribution. The large spike at zero is now gone, which indicates that it was a statistical artifact resulting from missing data and not representative of "sick days" or any other real phenomenon.
 
 ## Are there differences in activity patterns between weekdays and weekends?
 
@@ -159,14 +167,16 @@ interval.map$weekday <- sapply(intervals, function(i) {
 });
 ```
 
-Here are the weekday and weekend plots side-by-side:
+Here are the weekday and weekend plots side-by-side. (The y-axes forced to have the same range, to make the plots more easily comparable)
 
 ```{r}
 par(mfrow=c(1,2))
 plot(interval.map$intervals, interval.map$weekday, type="l",
-     xlab="Interval of weekday", ylab="Mean number of steps");
+     xlab="Interval of weekday", ylab="Mean number of steps",
+     ylim=c(0, 250));
 plot(interval.map$intervals, interval.map$weekend, type="l",
-     xlab="Interval of weekend", ylab="Mean number of steps");
+     xlab="Interval of weekend", ylab="Mean number of steps",
+     ylim=c(0, 250))
 ```
 
-TODO: enforce a common y-axis for easier comparison; put in some vertical lines at 6am, noon, and 6pm to make the graph more readable.
+The weekday data shows a large spike between 800 and 900 hours that's absent in the weekend data, probably representing a morning commute to work on weekdays. This is followed on weekdays by a relatively sedate period between 900 and 1800 hours. In contrast, on weekdays the steps are more evenly distributed throughout the day, indicating that activity can take place at any time with no particular pattern.
